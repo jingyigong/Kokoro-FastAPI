@@ -29,9 +29,27 @@ class Settings(BaseSettings):
     model_dir: str = "/app/api/src/models"  # Absolute path in container
     voices_dir: str = "/app/api/src/voices/v1_0"  # Absolute path in container
 
+    # Redis Configuration for Rate Limiting
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_db: int = 0
+    redis_password: str | None = None
+    redis_socket_timeout: int = 5
+    redis_socket_connect_timeout: int = 5
+
+    # Rate Limiting Settings
+    rate_limit_enabled: bool = True  # Whether to enable rate limiting
+    # 每分钟请求数限制
+    rate_limit_requests_per_minute: int = 2
+    # 每天字符数限制（10000字符）
+    rate_limit_chars_per_day: int = 10000
+    # IP白名单（逗号分隔）
+    rate_limit_whitelist: list[str] = ["127.0.0.1", "::1"]
+    
     # Audio Settings
     sample_rate: int = 24000
     default_volume_multiplier: float = 1.0
+    
     # Text Processing Settings
     target_min_tokens: int = 175  # Target minimum tokens per chunk
     target_max_tokens: int = 250  # Target maximum tokens per chunk
@@ -66,6 +84,17 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        env_file_encoding = "utf-8"
+        
+        @classmethod
+        def parse_env_var(cls, field_name: str, raw_val: str):
+            """Parse environment variables for specific fields"""
+            if field_name == "rate_limit_whitelist":
+                # 将逗号分隔的字符串转换为列表
+                if raw_val:
+                    return [ip.strip() for ip in raw_val.split(",") if ip.strip()]
+                return []
+            return raw_val
 
     def get_device(self) -> str:
         """Get the appropriate device based on settings and availability"""
@@ -81,6 +110,12 @@ class Settings(BaseSettings):
         elif torch.cuda.is_available():
             return "cuda"
         return "cpu"
+
+    def get_redis_url(self) -> str:
+        """Get Redis connection URL"""
+        if self.redis_password:
+            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
 
 settings = Settings()

@@ -6,7 +6,6 @@ import os
 import re
 import tempfile
 from typing import AsyncGenerator, Dict, List, Tuple, Union
-from urllib import response
 
 import aiofiles
 import numpy as np
@@ -178,7 +177,33 @@ async def create_speech(
     x_raw_response: str = Header(None, alias="x-raw-response"),
 ):
     """OpenAI-compatible endpoint for text-to-speech"""
-    # Validate model before processing request
+    # 首先进行速率限制检查
+    if settings.rate_limit_enabled:
+        try:
+            from ..middleware.rate_limiter import get_rate_limiter
+            
+            # 获取速率限制器
+            rate_limiter = await get_rate_limiter()
+            
+            # 检查速率限制
+            text_length = len(request.input) if request.input else 0
+            await rate_limiter.check_rate_limit(client_request, text_length)
+            
+        except HTTPException:
+            # 直接抛出速率限制异常
+            raise
+        except Exception as e:
+            # 其他错误记录日志，但继续处理
+            logger.warning(f"Rate limiting check failed: {e}")
+            # 在速率限制检查失败时，根据配置决定是否继续
+            if not settings.rate_limit_enabled:
+                logger.info("Rate limiting is disabled, continuing request")
+            else:
+                # 如果启用了速率限制但检查失败，可以选择允许请求或拒绝
+                # 这里我们选择允许请求，但记录警告
+                logger.warning("Rate limiting failed but allowing request to continue")
+    
+    # 原有的模型验证
     if request.model not in _openai_mappings["models"]:
         raise HTTPException(
             status_code=400,
@@ -190,7 +215,6 @@ async def create_speech(
         )
 
     try:
-        # model_name = get_model_name(request.model)
         tts_service = await get_tts_service()
         voice_name = await process_and_validate_voices(request.voice, tts_service)
 
@@ -574,6 +598,21 @@ async def combine_voices(request: Union[str, List[str]]):
             - 400: Invalid request (wrong number of voices, voice not found)
             - 500: Server error (file system issues, combination failed)
     """
+    # 检查是否需要进行速率限制
+    if settings.rate_limit_enabled:
+        try:
+            from ..middleware.rate_limiter import get_rate_limiter
+            from fastapi import Request
+            from starlette.requests import Request as StarletteRequest
+            
+            # 创建一个虚拟请求来获取客户端IP
+            # 注意：由于这里没有实际的Request对象，我们需要在上下文中处理
+            # 在实际使用中，combine_voices通常不会被频繁调用，所以可以放宽限制
+            logger.debug("Skipping rate limiting for voice combination endpoint")
+            
+        except Exception as e:
+            logger.warning(f"Rate limiting setup failed for combine_voices: {e}")
+    
     # Check if local voice saving is allowed
     if not settings.allow_local_voice_saving:
         raise HTTPException(

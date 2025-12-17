@@ -1,0 +1,228 @@
+<!-- Simplified 30% shorter, cleaner version of your TTS UI (functional equivalent) -->
+<!-- NOTE: This file keeps all core features: text input, voices, language, speed, waveform, toast, audio, download, API calls -->
+<!-- You can paste this directly as tts_clean.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kokoro-TTS Cleaner Version</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/wavesurfer.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { font-family: Inter, sans-serif }
+    .card { background:#fff; border-radius:12px; padding:20px; box-shadow:0 4px 20px rgba(0,0,0,0.08) }
+    .toast { position:fixed; top:80px; right:20px; padding:12px 18px; border-radius:10px; display:flex; gap:10px; background:#fff; box-shadow:0 4px 14px rgba(0,0,0,0.15); opacity:0; transform:translateX(80px); transition:0.3s }
+    .toast.show { opacity:1; transform:translateX(0) }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- Toast -->
+<div id="toast" class="toast hidden">
+  <i id="toastIcon"></i>
+  <span id="toastMsg" class="text-sm font-medium"></span>
+</div>
+
+<div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 py-8 px-4">
+
+  <!-- Left: Input + Audio -->
+  <div class="lg:col-span-2 space-y-6">
+
+    <!-- Text Input -->
+    <div class="card">
+      <div class="flex justify-between mb-3">
+        <h2 class="text-xl font-semibold"><i class="fas fa-keyboard mr-2"></i>Text Input</h2>
+        <button id="clearText" class="text-sm bg-blue-600 text-white px-3 py-1 rounded">Clear</button>
+      </div>
+      <textarea id="textInput" rows="10" class="w-full border rounded p-3"></textarea>
+      <div class="flex justify-between mt-2 text-sm text-gray-600">
+        <span>Characters: <b id="charCount">0</b>/2000</span>
+        <button id="sampleBtn" class="px-3 py-1 bg-gray-200 rounded">Random Example</button>
+      </div>
+    </div>
+
+    <!-- Audio Output -->
+    <div class="card">
+      <h2 class="text-xl font-semibold mb-4"><i class="fas fa-volume-up mr-2"></i>Audio Output</h2>
+      
+
+      <div id="audioSection" class="hidden">
+  <div class="flex items-center gap-3 mb-3">
+    <button id="playBtn" class="px-5 py-2 bg-blue-600 text-white rounded"><i class="fas fa-play mr-1"></i>Play</button>
+    <a id="download" class="px-4 py-2 bg-green-600 text-white rounded">Download</a>
+  </div>
+  <audio id="player" class="w-full" controls></audio>
+</div>
+
+      <div id="noAudio" class="text-center text-gray-500 py-10">
+        <i class="fas fa-music text-4xl mb-3"></i>
+        <p>No audio yet. Enter text & click Generate.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Settings -->
+  <div class="card space-y-5">
+    <div>
+      <label class="font-medium">Language</label>
+      <select id="lang" class="w-full border rounded p-2 mt-1">
+        <option value="a">American English</option>
+        <option value="b">British English</option>
+        <option value="j">Japanese</option>
+        <option value="z">Mandarin Chinese</option>
+        <option value="e">Spanish</option>
+        <option value="f">French</option>
+        <option value="h">Hindi</option>
+        <option value="i">Italian</option>
+        <option value="p">Brazilian Portuguese</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="font-medium">Voice</label>
+      <select id="voice" class="w-full border rounded p-2 mt-1"><option>Loading…</option></select>
+    </div>
+
+    <div>
+      <label class="font-medium">Format</label>
+      <select id="format" class="w-full border rounded p-2 mt-1">
+        <option value="mp3">MP3</option>
+        <option value="wav">WAV</option>
+        <option value="flac">FLAC</option>
+      </select>
+    </div>
+
+    <div>
+      <div class="flex justify-between mb-1"><label class="font-medium">Speed</label><span id="speedVal">1.0x</span></div>
+      <input id="speed" type="range" min="0.5" max="2" step="0.1" value="1" class="w-full">
+    </div>
+
+    <button id="generate" class="w-full py-3 bg-blue-600 text-white rounded font-bold">Generate Speech</button>
+
+    <div class="text-sm text-gray-600 border-t pt-4">
+      <p><b>Guest:</b> 2,000 chars / 10,000 daily</p>
+      <p><b>Registered:</b> 5,000 chars / 30,000 daily</p>
+      <p><b>Paid:</b> 10,000 chars, no limit</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// Simplified constants
+const API = {
+  TTS: "http://204.12.209.135:8880/v1/audio/speech",
+  VOICES: "http://204.12.209.135:8880/v1/audio/voices"
+};
+const MAX = 2000;
+
+// Elements helper
+const $ = id => document.getElementById(id);
+
+// Toast
+function showToast(msg, type="info") {
+  const toast = $("toast"), icon = $("toastIcon"), msgBox = $("toastMsg");
+  const icons = { info:"fa-info-circle", success:"fa-check-circle", error:"fa-exclamation-circle" };
+
+  icon.className = `fas ${icons[type]} text-${type === 'error' ? 'red' : 'blue'}-600`;
+  msgBox.textContent = msg;
+  toast.classList.remove("hidden");
+  setTimeout(()=>toast.classList.add("show"),10);
+  setTimeout(()=>toast.classList.remove("show"),2500);
+}
+
+// DOM refs
+const text = $("textInput"), charCount = $("charCount"), lang = $("lang"), voice = $("voice"), fmt=$("format"), speed=$("speed"), speedVal=$("speedVal"),
+      playBtn=$("playBtn"), player=$("player"), download=$("download"), waveformDiv=$("waveform"), audioSection=$("audioSection"), noAudio=$("noAudio");
+
+let wavesurfer=null;
+
+// Load voices
+async function loadVoices() {
+  try {
+    const r = await fetch(API.VOICES); const data = await r.json();
+    const voices = (data.voices||[]).filter(v=>!v.includes("v0"));
+    populateVoices(voices.filter(v=>v.startsWith(lang.value)));
+    voice.dataset.all = JSON.stringify(voices);
+  } catch {
+    populateVoices(["af_heart","af_bella"]);
+  }
+}
+
+function populateVoices(list) {
+  voice.innerHTML = "";
+  list.forEach(v => {
+    const opt=document.createElement("option"); opt.value=v; opt.textContent=v; voice.appendChild(opt);
+  });
+}
+
+lang.onchange = () => {
+  const all = JSON.parse(voice.dataset.all || "[]");
+  populateVoices(all.filter(v=>v.startsWith(lang.value)));
+};
+
+// Character counter
+text.oninput = () => {
+  let v=text.value; if(v.length>MAX) text.value=v=v.slice(0,MAX);
+  charCount.textContent=v.length;
+};
+
+// Speed
+speed.oninput=()=>speedVal.textContent = speed.value+"x";
+
+// Sample
+$("sampleBtn").onclick = () => {
+  const samples=["Hello, welcome to Kokoro TTS.","The future of AI voice synthesis is exciting.","This tool converts text into natural speech."];
+  text.value = samples[Math.floor(Math.random()*samples.length)];
+  charCount.textContent=text.value.length;
+};
+
+// Clear
+$("clearText").onclick=()=>{text.value="";charCount.textContent=0;showToast("Cleared")};
+
+// Generate
+$("generate").onclick=generate;
+async function generate() {
+  if(!text.value.trim()) return showToast("Enter text!","error");
+
+  showToast("Generating…","info");
+
+  const payload={
+    model:"kokoro", lang_code:lang.value, input:text.value.trim(), voice:voice.value,
+    response_format:fmt.value, download_format:fmt.value, speed:parseFloat(speed.value), stream:false
+  };
+
+  try{
+    const r=await fetch(API.TTS,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    if(!r.ok) throw new Error(r.status);
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+
+    noAudio.classList.add("hidden");
+    audioSection.classList.remove("hidden");
+    waveformDiv.classList.remove("hidden");
+
+    player.src=url;
+    download.href=url;
+    download.download=`tts_${Date.now()}.${fmt.value}`;
+
+    if(!wavesurfer){ wavesurfer = WaveSurfer.create({container:waveformDiv,waveColor:"#4f46e5",progressColor:"#7c3aed",height:120}); }
+    wavesurfer.load(url);
+
+    showToast("Success!","success");
+  }catch(e){ showToast("Failed: "+e,"error") }
+}
+
+// Play
+playBtn.onclick=()=>{
+  if(player.paused){player.play();playBtn.innerHTML='<i class="fas fa-pause mr-1"></i>Pause'}
+  else {player.pause();playBtn.innerHTML='<i class="fas fa-play mr-1"></i>Play'}
+};
+
+// Init
+loadVoices();
+</script>
+</body>
+</html>

@@ -55,9 +55,31 @@ async def lifespan(app: FastAPI):
     from .inference.model_manager import get_manager
     from .inference.voice_manager import get_manager as get_voice_manager
     from .services.temp_manager import cleanup_temp_files
+    from .core.redis_manager import redis_manager
 
     # Clean old temp files on startup
     await cleanup_temp_files()
+
+    # Initialize Redis connection manager
+    logger.info("Initializing Redis connection...")
+    try:
+        redis_client = await redis_manager.get_client()
+        if redis_client:
+            # Test Redis connection
+            await redis_client.ping()
+            logger.info(f"Redis connected successfully to {settings.redis_host}:{settings.redis_port}")
+        else:
+            logger.warning("Redis is not available. Rate limiting will be disabled.")
+    except Exception as e:
+        logger.warning(f"Failed to connect to Redis: {e}. Rate limiting will be disabled.")
+    
+    # Initialize rate limiter
+    from .middleware.rate_limiter import get_rate_limiter
+    try:
+        rate_limiter = await get_rate_limiter()
+        logger.info("Rate limiter initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize rate limiter: {e}")
 
     logger.info("Loading TTS model and voice packs...")
 
@@ -98,6 +120,14 @@ async def lifespan(app: FastAPI):
         startup_msg += "\nRunning on CPU"
     startup_msg += f"\n{voicepack_count} voice packs loaded"
 
+    # Add rate limiting info
+    if settings.rate_limit_enabled:
+        startup_msg += f"\nRate limiting: {settings.rate_limit_requests_per_minute} req/min, {settings.rate_limit_chars_per_day} chars/day"
+        if settings.rate_limit_whitelist:
+            startup_msg += f"\nIP Whitelist: {', '.join(settings.rate_limit_whitelist)}"
+    else:
+        startup_msg += "\nRate limiting: disabled"
+
     # Add web player info if enabled
     if settings.enable_web_player:
         startup_msg += (
@@ -110,7 +140,25 @@ async def lifespan(app: FastAPI):
     startup_msg += f"\n{boundary}\n"
     logger.info(startup_msg)
 
+    # App is running
     yield
+    
+    # Cleanup on shutdown
+    logger.info("Shutting down application...")
+    
+    # Close Redis connection
+    try:
+        await redis_manager.close()
+        logger.info("Redis connection closed")
+    except Exception as e:
+        logger.error(f"Error closing Redis connection: {e}")
+    
+    # Cleanup temp files
+    try:
+        await cleanup_temp_files()
+        logger.info("Temporary files cleaned up")
+    except Exception as e:
+        logger.error(f"Error cleaning temp files: {e}")
 
 
 # Initialize FastAPI app
@@ -144,13 +192,101 @@ if settings.enable_web_player:
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy"}
+    # Check Redis connection if rate limiting is enabled
+    from .core.redis_manager import redis_manager
+    
+    health_status = {"status": "healthy", "services": {}}
+    
+    try:
+        redis_client = await redis_manager.get_client()
+        if redis_client:
+            await redis_client.ping()
+            health_status["services"]["redis"] = "connected"
+        else:
+            health_status["services"]["redis"] = "not_available"
+    except Exception as e:
+        logger.warning(f"Redis health check failed: {e}")
+        health_status["services"]["redis"] = "error"
+        health_status["status"] = "degraded"
+    
+    # Check TTS service
+    try:
+        from .services.tts_service import TTSService
+        tts_service_instance = None
+        # Try to get existing instance or create temporary one
+        health_status["services"]["tts"] = "available"
+    except Exception as e:
+        logger.warning(f"TTS service health check failed: {e}")
+        health_status["services"]["tts"] = "error"
+        health_status["status"] = "unhealthy"
+    
+    return health_status
 
 
 @app.get("/v1/test")
 async def test_endpoint():
     """Test endpoint to verify routing"""
     return {"status": "ok"}
+
+
+# Rate limiting info endpoint
+@app.get("/v1/rate_limit/info")
+async def rate_limit_info():
+    """Get rate limiting configuration information"""
+    from .middleware.rate_limiter import get_rate_limiter
+    
+    try:
+        rate_limiter = await get_rate_limiter()
+        
+        info = {
+            "enabled": settings.rate_limit_enabled,
+            "limits": {
+                "requests_per_minute": settings.rate_limit_requests_per_minute,
+                "chars_per_day": settings.rate_limit_chars_per_day,
+            },
+            "whitelist": settings.rate_limit_whitelist,
+            "redis_available": rate_limiter.redis is not None,
+        }
+        
+        return info
+    except Exception as e:
+        logger.error(f"Failed to get rate limit info: {e}")
+        raise
+
+
+# Redis test endpoint (for debugging)
+@app.get("/debug/redis")
+async def test_redis():
+    """Test Redis connection and basic operations"""
+    from .core.redis_manager import redis_manager
+    
+    try:
+        redis_client = await redis_manager.get_client()
+        if not redis_client:
+            return {"status": "error", "message": "Redis client not available"}
+        
+        # Test ping
+        pong = await redis_client.ping()
+        
+        # Test set/get
+        test_key = "test:ping"
+        await redis_client.set(test_key, "pong", ex=10)  # 10秒过期
+        value = await redis_client.get(test_key)
+        
+        return {
+            "status": "success",
+            "redis": {
+                "connected": True,
+                "ping": pong,
+                "test_key_value": value.decode() if value else None,
+                "host": settings.redis_host,
+                "port": settings.redis_port,
+                "db": settings.redis_db,
+            }
+        }
+    except Exception as e:
+        logger.error(f"Redis test failed: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 if __name__ == "__main__":

@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kokoro-TTS Text-to-Speech Tool</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/wavesurfer.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    
+    .glass-effect {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .gradient-bg {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .shadow-soft {
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+    
+    .waveform-container {
+      background: linear-gradient(to bottom, #f8fafc, #e2e8f0);
+      border-radius: 10px;
+      padding: 15px;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(to right, #3b82f6, #1d4ed8);
+      transition: all 0.3s ease;
+    }
+    
+    .btn-primary:hover {
+      background: linear-gradient(to right, #2563eb, #1e40af);
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(37, 99, 235, 0.3);
+    }
+    
+    .btn-secondary {
+      background: linear-gradient(to right, #10b981, #059669);
+      transition: all 0.3s ease;
+    }
+    
+    .btn-secondary:hover {
+      background: linear-gradient(to right, #059669, #047857);
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(16, 185, 129, 0.3);
+    }
+    
+    .footer-bg {
+      background: linear-gradient(to right, #1e293b, #0f172a);
+    }
+    
+    .settings-card {
+      background: linear-gradient(145deg, #ffffff, #f1f5f9);
+      border-radius: 12px;
+      padding: 20px;
+      height: 100%;
+    }
+    
+    .input-focus:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    .audio-card {
+      background: linear-gradient(145deg, #ffffff, #f8fafc);
+      border-radius: 12px;
+      padding: 20px;
+      height: 100%;
+    }
+    
+    .loading-pulse {
+      animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .sample-btn {
+      background: linear-gradient(to right, #f3f4f6, #e5e7eb);
+      border: 1px solid #d1d5db;
+      transition: all 0.3s ease;
+    }
+    
+    .sample-btn:hover {
+      background: linear-gradient(to right, #e5e7eb, #d1d5db);
+      transform: translateY(-1px);
+    }
+
+    /* Status toast styles */
+    .status-toast {
+      position: fixed;
+      top: 90px;
+      right: 20px;
+      z-index: 1000;
+      max-width: 350px;
+      opacity: 0;
+      transform: translateX(100px);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      pointer-events: none;
+    }
+
+    .status-toast.show {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: auto;
+    }
+
+    .status-toast-content {
+      padding: 14px 18px;
+      border-radius: 10px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(10px);
+      background: rgba(255, 255, 255, 0.95);
+    }
+
+    .status-toast-content i {
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .status-toast-text {
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
+    .status-toast-close {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: #6b7280;
+      cursor: pointer;
+      padding: 4px;
+      font-size: 16px;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+
+    .status-toast-close:hover {
+      opacity: 1;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .status-toast {
+        top: 80px;
+        right: 10px;
+        left: 10px;
+        max-width: calc(100% - 20px);
+        transform: translateY(-100px);
+      }
+      
+      .status-toast.show {
+        transform: translateY(0);
+      }
+      
+      .status-toast-content {
+        padding: 12px 16px;
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+  <!-- Header -->
+  <header class="gradient-bg text-white py-4 px-6 shadow-lg">
+    <div class="max-w-7xl mx-auto">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="bg-white p-2 rounded-full">
+            <i class="fas fa-microphone-alt text-blue-600 text-xl"></i>
+          </div>
+          <div>
+            <h1 class="text-2xl font-bold">Free Text-to-Speech Online</h1>
+            <p class="text-sm text-blue-100">Convert up to 10,000 characters to high-quality speech</p>
+          </div>
+        </div>
+        <div class="flex items-center space-x-4">
+          <div class="hidden md:flex items-center space-x-2">
+            <i class="fas fa-clock text-yellow-300"></i>
+            <span class="text-sm">Fast and cost-efficient</span>
+          </div>
+          <div class="hidden md:flex items-center space-x-2">
+            <i class="fas fa-globe text-green-300"></i>
+            <span class="text-sm">Multi-language</span>
+          </div>
+          <div class="hidden md:flex items-center space-x-2">
+            <i class="fas fa-headphones text-purple-300"></i>
+            <span class="text-sm">High quality</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Status Toast -->
+  <div id="statusToast" class="status-toast hidden">
+    <div class="status-toast-content">
+      <i id="statusIcon"></i>
+      <span id="statusMessageText" class="status-toast-text"></span>
+      <button id="statusCloseBtn" class="status-toast-close">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl mx-auto w-full py-6 px-4">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Left Column: Text Input & Audio Output -->
+      <div class="lg:col-span-2 space-y-6">
+        <!-- Text Input Card -->
+        <div class="glass-effect rounded-xl shadow-soft overflow-hidden">
+          <div class="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-4">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xl font-semibold">
+                <i class="fas fa-keyboard mr-2"></i>Text Input
+              </h2>
+              <div class="flex items-center space-x-2">
+                <button id="clearText" class="text-sm bg-blue-700 hover:bg-blue-800 px-3 py-1 rounded transition">
+                  <i class="fas fa-eraser mr-1"></i>Clear
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="p-6">
+            <textarea 
+              id="textInput" 
+              rows="13" 
+              class="w-full border border-gray-300 rounded-lg p-4 text-gray-700 focus:outline-none input-focus"
+              placeholder="Enter text to convert to speech (up to 10,000 characters)..."
+            ></textarea>
+            <div class="flex justify-between items-center mt-4">
+              <div class="text-sm text-gray-500">
+                <i class="fas fa-font mr-1"></i>
+                Characters: <span id="charCount" class="font-semibold">0</span>/2000
+              </div>
+              <div class="flex space-x-2">
+                <button id="sampleEn" class="sample-btn text-gray-700 px-3 py-1 rounded text-sm">
+                  <i class="fas fa-random mr-1"></i>Random Example
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Audio Output Card -->
+        <div class="glass-effect rounded-xl shadow-soft overflow-hidden">
+          <div class="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-4">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xl font-semibold">
+                <i class="fas fa-volume-up mr-2"></i>Audio Output
+              </h2>
+              <div id="audioStatus" class="text-sm bg-green-700 px-3 py-1 rounded hidden">
+                Ready to play
+              </div>
+            </div>
+          </div>
+          
+          <div class="p-6">
+            <!-- Waveform -->
+            <div id="waveform" class="waveform-container hidden mb-6"></div>
+            
+            <!-- Audio Player -->
+            <div id="audioSection" class="hidden">
+              <div class="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0">
+                <div class="flex items-center space-x-4 w-full md:w-auto">
+                  <button id="playBtn" class="btn-primary text-white px-5 py-3 rounded-lg font-medium flex items-center">
+                    <i class="fas fa-play mr-2"></i>Play
+                  </button>
+                  <div class="flex-1">
+                    <audio id="audioPlayer" class="w-full"></audio>
+                  </div>
+                </div>
+                
+                <div class="flex space-x-3">
+                  <a id="downloadLink" class="btn-secondary text-white px-5 py-3 rounded-lg font-medium flex items-center" download>
+                    <i class="fas fa-download mr-2"></i>Download
+                  </a>
+                </div>
+              </div>
+              
+              <!-- Audio Info -->
+              <div id="audioInfo" class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div class="bg-gray-50 p-3 rounded-lg">
+                  <div class="text-sm text-gray-500">Format</div>
+                  <div id="audioFormat" class="font-semibold text-gray-800">-</div>
+                </div>
+                <div class="bg-gray-50 p-3 rounded-lg">
+                  <div class="text-sm text-gray-500">Duration</div>
+                  <div id="audioDuration" class="font-semibold text-gray-800">-</div>
+                </div>
+                <div class="bg-gray-50 p-3 rounded-lg">
+                  <div class="text-sm text-gray-500">Voice</div>
+                  <div id="audioVoice" class="font-semibold text-gray-800">-</div>
+                </div>
+                <div class="bg-gray-50 p-3 rounded-lg">
+                  <div class="text-sm text-gray-500">Language</div>
+                  <div id="audioLanguage" class="font-semibold text-gray-800">American English</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Placeholder when no audio -->
+            <div id="noAudioSection" class="text-center py-10">
+              <div class="text-gray-400 mb-4">
+                <i class="fas fa-music text-5xl"></i>
+              </div>
+              <h3 class="text-lg font-medium text-gray-600 mb-2">No audio generated yet</h3>
+              <p class="text-gray-500">Enter text and adjust settings on the right, then click "Generate Speech"</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Voice Settings -->
+      <div class="lg:col-span-1">
+        <div class="settings-card shadow-soft h-full">
+          <div class="mb-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-1">
+              <i class="fas fa-sliders-h mr-2 text-blue-500"></i>Voice Settings
+            </h2>
+            <p class="text-gray-500 text-sm">Customize speech generation parameters</p>
+          </div>
+          
+          <!-- Language Selector -->
+          <div class="mb-6">
+            <label class="block mb-2 font-medium text-gray-700">
+              <i class="fas fa-language mr-2 text-blue-500"></i>Select Language
+            </label>
+            <select id="langSelect" class="w-full border border-gray-300 rounded-lg p-3 focus:outline-none input-focus">
+              <option value="a" selected>🇺🇸 American English</option>
+              <option value="b">🇬🇧 British English</option>
+              <option value="j">🇯🇵 Japanese</option>
+              <option value="z">🇨🇳 Mandarin Chinese</option>
+              <option value="e">🇪🇸 Spanish</option>
+              <option value="f">🇫🇷 French</option>
+              <option value="h">🇮🇳 Hindi</option>
+              <option value="i">🇮🇹 Italian</option>
+              <option value="p">🇧🇷 Brazilian Portuguese</option>
+            </select>
+          </div>
+          
+          <!-- Voice Selector -->
+          <div class="mb-6">
+            <label class="block mb-2 font-medium text-gray-700">
+              <i class="fas fa-user-voice mr-2 text-blue-500"></i>Select Voice
+            </label>
+            <select id="voiceSelect" class="w-full border border-gray-300 rounded-lg p-3 focus:outline-none input-focus">
+              <option>Loading...</option>
+            </select>
+            <p class="text-xs text-gray-500 mt-2">Available voices based on selected language</p>
+          </div>
+          
+          <!-- Audio Format -->
+          <div class="mb-6">
+            <label class="block mb-2 font-medium text-gray-700">
+              <i class="fas fa-file-audio mr-2 text-blue-500"></i>Output Format
+            </label>
+            <select id="formatSelect" class="w-full border border-gray-300 rounded-lg p-3 focus:outline-none input-focus">
+              <option value="mp3" selected>MP3 (Universal)</option>
+              <option value="wav">WAV (Lossless)</option>
+              <option value="opus">OPUS (High Efficiency)</option>
+              <option value="flac">FLAC (Lossless Compressed)</option>
+              <option value="m4a">M4A (Apple Compatible)</option>
+            </select>
+          </div>
+          
+          <!-- Speed Control -->
+          <div class="mb-8">
+            <div class="flex justify-between mb-2">
+              <label class="font-medium text-gray-700">
+                <i class="fas fa-tachometer-alt mr-2 text-blue-500"></i>Speech Speed
+              </label>
+              <span id="speedValue" class="text-blue-600 font-bold">1.0x</span>
+            </div>
+            <div class="flex items-center space-x-4 mb-2">
+              <span class="text-sm text-gray-500">
+                <i class="fas fa-snail"></i>
+              </span>
+              <input id="speedSlider" type="range" min="0.5" max="2" step="0.1" value="1" 
+                     class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+              <span class="text-sm text-gray-500">
+                <i class="fas fa-running"></i>
+              </span>
+            </div>
+            <div class="flex justify-between text-xs text-gray-500">
+              <span>Slow (0.5x)</span>
+              <span>Normal (1.0x)</span>
+              <span>Fast (2.0x)</span>
+            </div>
+          </div>
+          
+          <!-- Generate Button -->
+          <button id="generateBtn" 
+                  class="w-full btn-primary text-white text-lg py-4 rounded-xl font-bold flex items-center justify-center">
+            <span id="btnText">Generate Speech</span>
+            <div id="loadingSpinner" class="hidden ml-3">
+              <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+            </div>
+          </button>
+          
+          <!-- Removed original status message area -->
+          
+          <!-- Tips -->
+          <div class="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <h3 class="font-medium text-gray-700 mb-2">
+              <i class="fas fa-lightbulb mr-2 text-yellow-500"></i>Tips
+            </h3>
+            <ul class="text-sm text-gray-600 space-y-2">
+              <li class="flex items-start">
+                <span class="text-blue-500 mr-2">•</span>
+                <div>
+                  <span class="font-medium">Guest:</span> Up to 2,000 chars per request, 10,000 daily.
+                </div>
+              </li>
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2">•</span>
+                <div>
+                  <span class="font-medium">Registered:</span> Up to 5,000 chars per request, 30,000 daily.
+                </div>
+              </li>
+              <li class="flex items-start">
+                <span class="text-purple-500 mr-2">•</span>
+                <div>
+                  <span class="font-medium">Paid:</span> Up to 10,000 chars per request, 100,000 daily.
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer-bg text-white py-6 mt-8">
+    <div class="max-w-7xl mx-auto px-4">
+      <div class="flex flex-col md:flex-row items-center justify-between">
+        <div class="mb-4 md:mb-0">
+          <div class="flex items-center space-x-3">
+            <div class="bg-white p-2 rounded-lg">
+              <i class="fas fa-microphone text-blue-600"></i>
+            </div>
+            <div>
+              <h3 class="text-lg font-bold">Kokoro-TTS</h3>
+              <p class="text-sm text-gray-300">Advanced Text-to-Speech Engine</p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="text-center mb-4 md:mb-0">
+          <p class="text-base">© 2025 XXTTS.io Powered by DatabaseMart</p>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+          <a href="#" class="text-gray-300 hover:text-white transition">
+            <i class="fab fa-github text-xl"></i>
+          </a>
+          <a href="#" class="text-gray-300 hover:text-white transition">
+            <i class="fas fa-book text-xl"></i>
+          </a>
+          <a href="#" class="text-gray-300 hover:text-white transition">
+            <i class="fas fa-question-circle text-xl"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+<script>
+  // Voice Manager Class
+  class VoiceManager {
+    constructor() {
+      this.mapping = {};
+      this.voices = [];
+      this.isLoaded = false;
+    }
+
+    /**
+     * Load voice mapping from JSON file
+     * @param {string} url - URL to voice-mapping.json
+     * @returns {Promise<boolean>} - Success status
+     */
+    async loadMapping(url) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const data = await response.json();
+        this.mapping = data.voiceDisplayNames || {};
+        this.isLoaded = true;
+        return true;
+      } catch (error) {
+        console.error('Failed to load voice mapping:', error);
+        this.mapping = {};
+        this.isLoaded = false;
+        return false;
+      }
+    }
+
+    /**
+     * Set available voices from API
+     * @param {Array<string>} voices - Voice IDs from API
+     */
+    setVoices(voices) {
+      this.voices = voices || [];
+    }
+
+    /**
+     * Get display name for a voice ID
+     * @param {string} voiceId - Voice ID (e.g., "af_heart")
+     * @returns {string} - Human-readable display name
+     */
+    getDisplayName(voiceId) {
+      if (this.mapping[voiceId]) {
+        return this.mapping[voiceId];
+      }
+      
+      // Fallback: generate a basic display name
+      const parts = voiceId.split('_');
+      if (parts.length >= 2) {
+        const name = parts[1].charAt(0).toUpperCase() + parts[1].slice(1);
+        const gender = parts[0].charAt(1) === 'f' ? 'F' : 'M';
+        return `${name} (${gender})`;
+      }
+      
+      return voiceId;
+    }
+
+    /**
+     * Filter voices by language code
+     * @param {string} langCode - Language code (e.g., "a", "b", "j")
+     * @returns {Array<string>} - Filtered voices
+     */
+    filterByLanguage(langCode) {
+      return this.voices.filter(voice => voice.startsWith(langCode));
+    }
+
+    /**
+     * Get all voices for a specific language with display names
+     * @param {string} langCode - Language code
+     * @returns {Array<Object>} - Array of {id, displayName}
+     */
+    getVoicesForLanguage(langCode) {
+      const filteredVoices = this.filterByLanguage(langCode);
+      return filteredVoices.map(voiceId => ({
+        id: voiceId,
+        displayName: this.getDisplayName(voiceId)
+      }));
+    }
+
+    /**
+     * Check if a voice exists
+     * @param {string} voiceId - Voice ID to check
+     * @returns {boolean} - True if voice exists
+     */
+    hasVoice(voiceId) {
+      return this.voices.includes(voiceId);
+    }
+
+    /**
+     * Get total number of voices
+     * @returns {number} - Total voice count
+     */
+    getTotalVoiceCount() {
+      return this.voices.length;
+    }
+
+    /**
+     * Get number of voices for a language
+     * @param {string} langCode - Language code
+     * @returns {number} - Voice count for language
+     */
+    getVoiceCountForLanguage(langCode) {
+      return this.filterByLanguage(langCode).length;
+    }
+  }
+
+  // Configuration
+  const CONFIG = {
+    API_URL: "http://204.12.209.135:8880/v1/audio/speech",
+    VOICE_API: "http://204.12.209.135:8880/v1/audio/voices",
+    VOICE_MAPPING_URL: "voice-mapping.json",
+    SAMPLE_TEXTS_URL: "sample.json",
+    MAX_CHARS: 2000,
+    DEFAULT_LANGUAGE: "American English"
+  };
+
+  // Application State
+  const state = {
+    voiceManager: new VoiceManager(),
+    wavesurfer: null,
+    currentAudioInfo: {
+      format: "MP3",
+      voice: null,
+      language: CONFIG.DEFAULT_LANGUAGE,
+      duration: null
+    },
+    statusTimeout: null,
+    sampleTexts: []
+  };
+
+  // DOM Elements
+  const elements = {
+    textInput: document.getElementById('textInput'),
+    charCount: document.getElementById('charCount'),
+    langSelect: document.getElementById('langSelect'),
+    voiceSelect: document.getElementById('voiceSelect'),
+    formatSelect: document.getElementById('formatSelect'),
+    speedSlider: document.getElementById('speedSlider'),
+    speedValue: document.getElementById('speedValue'),
+    generateBtn: document.getElementById('generateBtn'),
+    btnText: document.getElementById('btnText'),
+    loadingSpinner: document.getElementById('loadingSpinner'),
+    waveform: document.getElementById('waveform'),
+    audioSection: document.getElementById('audioSection'),
+    noAudioSection: document.getElementById('noAudioSection'),
+    audioPlayer: document.getElementById('audioPlayer'),
+    audioStatus: document.getElementById('audioStatus'),
+    downloadLink: document.getElementById('downloadLink'),
+    playBtn: document.getElementById('playBtn'),
+    clearText: document.getElementById('clearText'),
+    sampleEn: document.getElementById('sampleEn'),
+    audioFormat: document.getElementById('audioFormat'),
+    audioDuration: document.getElementById('audioDuration'),
+    audioVoice: document.getElementById('audioVoice'),
+    audioLanguage: document.getElementById('audioLanguage'),
+    statusToast: document.getElementById('statusToast'),
+    statusMessageText: document.getElementById('statusMessageText'),
+    statusIcon: document.getElementById('statusIcon'),
+    statusCloseBtn: document.getElementById('statusCloseBtn')
+  };
+
+  // Utility Functions
+  const utils = {
+    /**
+     * Show status message in toast
+     * @param {string} message - Message to display
+     * @param {string} type - Message type: 'info', 'success', 'error', 'warning'
+     */
+    showStatus(message, type = 'info') {
+      // Clear existing timeout
+      if (state.statusTimeout) {
+        clearTimeout(state.statusTimeout);
+        state.statusTimeout = null;
+      }
+      
+      // Hide toast first
+      elements.statusToast.classList.remove('show');
+      
+      // Update content and show after short delay
+      setTimeout(() => {
+        const colors = {
+          info: 'bg-blue-100 text-blue-800 border-blue-200',
+          success: 'bg-green-100 text-green-800 border-green-200',
+          error: 'bg-red-100 text-red-800 border-red-200',
+          warning: 'bg-yellow-100 text-yellow-800 border-yellow-200'
+        };
+        
+        const icons = {
+          info: 'fas fa-info-circle text-blue-600',
+          success: 'fas fa-check-circle text-green-600',
+          error: 'fas fa-exclamation-circle text-red-600',
+          warning: 'fas fa-exclamation-triangle text-yellow-600'
+        };
+        
+        // Update content and styles
+        elements.statusMessageText.textContent = message;
+        elements.statusToast.className = `status-toast ${colors[type]}`;
+        elements.statusIcon.className = icons[type];
+        
+        // Show toast
+        elements.statusToast.classList.remove('hidden');
+        setTimeout(() => {
+          elements.statusToast.classList.add('show');
+        }, 10);
+        
+        // Auto-hide (except for error messages)
+        if (type !== 'error') {
+          state.statusTimeout = setTimeout(() => {
+            this.hideStatus();
+          }, 3000);
+        }
+      }, 50);
+    },
+
+    /**
+     * Hide status toast
+     */
+    hideStatus() {
+      elements.statusToast.classList.remove('show');
+      setTimeout(() => {
+        elements.statusToast.classList.add('hidden');
+      }, 300);
+    },
+
+    /**
+     * Show/hide loading state on generate button
+     * @param {boolean} show - Whether to show loading state
+     */
+    showLoading(show) {
+      elements.generateBtn.disabled = show;
+      elements.loadingSpinner.classList.toggle('hidden', !show);
+      elements.btnText.textContent = show ? 'Generating...' : 'Generate Speech';
+      
+      if (show) {
+        elements.generateBtn.classList.add('loading-pulse');
+      } else {
+        elements.generateBtn.classList.remove('loading-pulse');
+      }
+    },
+
+    /**
+     * Format seconds to MM:SS
+     * @param {number} seconds - Time in seconds
+     * @returns {string} - Formatted time
+     */
+    formatTime(seconds) {
+      if (!seconds || isNaN(seconds)) return '0:00';
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    },
+    
+    /**
+     * Update audio info display
+     */
+    updateAudioInfo() {
+      elements.audioFormat.textContent = state.currentAudioInfo.format || '-';
+      elements.audioDuration.textContent = state.currentAudioInfo.duration || '-';
+      elements.audioVoice.textContent = state.currentAudioInfo.voice || '-';
+      elements.audioLanguage.textContent = state.currentAudioInfo.language || CONFIG.DEFAULT_LANGUAGE;
+    },
+    
+    /**
+     * Show audio player status
+     * @param {string} message - Status message
+     * @param {string} type - Message type
+     */
+    showAudioStatus(message, type = 'info') {
+      const colors = {
+        info: 'bg-blue-700',
+        success: 'bg-green-700',
+        error: 'bg-red-700',
+        warning: 'bg-yellow-700'
+      };
+      
+      elements.audioStatus.className = `text-sm ${colors[type]} px-3 py-1 rounded`;
+      elements.audioStatus.textContent = message;
+      elements.audioStatus.classList.remove('hidden');
+    }
+  };
+
+  // Data Loading Functions
+  const dataLoader = {
+    /**
+     * Load sample texts from JSON file
+     */
+    async loadSampleTexts() {
+      try {
+        const response = await fetch(CONFIG.SAMPLE_TEXTS_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        state.sampleTexts = data.samples || [];
+        if (state.sampleTexts.length > 0) {
+          utils.showStatus(`Loaded ${state.sampleTexts.length} sample texts`, 'success');
+        }
+      } catch (error) {
+        console.error('Failed to load sample texts:', error);
+        // Fallback sample texts
+        state.sampleTexts = [
+          "Hello, and welcome to the Kokoro-TTS text-to-speech tool. This advanced system can convert text into high-quality speech.",
+          "Text-to-speech technology has revolutionized accessibility, allowing people with visual impairments to access digital content more easily.",
+          "The future of AI voice synthesis looks promising, with more natural intonations and emotional expressiveness being developed every day."
+        ];
+        utils.showStatus('Using default sample texts', 'info');
+      }
+    },
+
+    /**
+     * Fetch voice list from API
+     */
+    async fetchVoices() {
+        if (state.voiceManager.voices.length > 0) return state.voiceManager.voices;
+        
+        try {
+            const response = await fetch(CONFIG.VOICE_API);
+            if (!response.ok) throw new Error('Failed to fetch voice list');
+            
+            const data = await response.json();
+            let voices = data.voices || [];
+            
+            // Simple filter: remove voices containing v0 (case insensitive)
+            voices = voices.filter(voice => {
+                const lowerVoice = voice.toLowerCase();
+                return !lowerVoice.includes('v0');
+            });
+            
+            state.voiceManager.setVoices(voices);
+            return voices;
+        } catch (error) {
+            console.error('Voice fetch failed:', error);
+            // Fallback voice list if API fails
+            state.voiceManager.setVoices(['af_heart', 'af_soft', 'am_wise', 'am_calm']);
+            return state.voiceManager.voices;
+        }
+    },
+
+    /**
+     * Initialize all data loading
+     */
+    async initializeAll() {
+      try {
+        await Promise.all([
+          this.fetchVoices(),
+          dataLoader.loadSampleTexts(),
+          state.voiceManager.loadMapping(CONFIG.VOICE_MAPPING_URL)
+        ]);
+        return true;
+      } catch (error) {
+        console.error('Data initialization failed:', error);
+        return false;
+      }
+    }
+  };
+
+  // UI Update Functions
+  const uiUpdater = {
+    /**
+     * Update voice dropdown based on selected language
+     */
+    updateVoiceList() {
+      const langCode = elements.langSelect.value.toLowerCase();
+      const langText = elements.langSelect.options[elements.langSelect.selectedIndex].text;
+      
+      // Update current language info
+      state.currentAudioInfo.language = langText.replace(/[🇺🇸🇬🇧🇯🇵🇨🇳🇪🇸🇫🇷🇮🇳🇮🇹🇧🇷]/g, '').trim();
+      
+      // Clear existing options
+      elements.voiceSelect.innerHTML = '';
+      
+      // Get voices for selected language
+      const voices = state.voiceManager.getVoicesForLanguage(langCode);
+      
+      if (voices.length > 0) {
+        // Add voice options
+        voices.forEach(voice => {
+          const option = document.createElement('option');
+          option.value = voice.id; // Store original ID
+          option.textContent = voice.displayName; // Show display name
+          elements.voiceSelect.appendChild(option);
+        });
+        
+        // Select first voice by default
+        elements.voiceSelect.value = voices[0].id;
+        state.currentAudioInfo.voice = voices[0].displayName;
+        utils.updateAudioInfo();
+      } else {
+        // No voices available
+        const option = document.createElement('option');
+        option.textContent = 'No voices available';
+        option.disabled = true;
+        elements.voiceSelect.appendChild(option);
+        state.currentAudioInfo.voice = '-';
+        utils.updateAudioInfo();
+      }
+    },
+
+    /**
+     * Handle voice selection change
+     * @param {Event} e - Change event
+     */
+    handleVoiceChange(e) {
+      const voiceId = e.target.value;
+      state.currentAudioInfo.voice = state.voiceManager.getDisplayName(voiceId);
+      utils.updateAudioInfo();
+    },
+
+    /**
+     * Load random sample text
+     */
+    loadRandomSample() {
+      if (state.sampleTexts.length === 0) {
+        utils.showStatus('Sample texts not loaded yet', 'warning');
+        return;
+      }
+      
+      const randomIndex = Math.floor(Math.random() * state.sampleTexts.length);
+      const sampleText = state.sampleTexts[randomIndex];
+      
+      elements.textInput.value = sampleText;
+      const len = sampleText.length;
+      elements.charCount.textContent = len;
+      
+      utils.showStatus(`Loaded random example #${randomIndex + 1}`, 'success');
+    }
+  };
+
+  // Event Listeners
+  function initEventListeners() {
+    // Text input listener
+    elements.textInput.addEventListener('input', () => {
+      const len = elements.textInput.value.length;
+      elements.charCount.textContent = len;
+      
+      if (len > CONFIG.MAX_CHARS) {
+        utils.showStatus(`Cannot exceed ${CONFIG.MAX_CHARS} characters!`, 'error');
+        elements.textInput.value = elements.textInput.value.substring(0, CONFIG.MAX_CHARS);
+        elements.charCount.textContent = CONFIG.MAX_CHARS;
+      }
+    });
+
+    // Clear text button
+    elements.clearText.addEventListener('click', () => {
+      elements.textInput.value = '';
+      elements.charCount.textContent = '0';
+      utils.showStatus('Text cleared', 'info');
+    });
+
+    // Sample text button
+    elements.sampleEn.addEventListener('click', uiUpdater.loadRandomSample);
+
+    // Speed control slider
+    elements.speedSlider.addEventListener('input', (e) => {
+      elements.speedValue.textContent = `${e.target.value}x`;
+    });
+
+    // Language selection change
+    elements.langSelect.addEventListener('change', () => uiUpdater.updateVoiceList());
+
+    // Voice selection change
+    elements.voiceSelect.addEventListener('change', uiUpdater.handleVoiceChange);
+
+    // Format selection change
+    elements.formatSelect.addEventListener('change', (e) => {
+      const formatText = e.target.options[e.target.selectedIndex].text.split(' ')[0];
+      state.currentAudioInfo.format = formatText;
+      utils.updateAudioInfo();
+    });
+
+    // Generate button
+    elements.generateBtn.addEventListener('click', generateAudio);
+
+    // Audio player controls
+    elements.playBtn.addEventListener('click', () => {
+      if (elements.audioPlayer.paused) {
+        elements.audioPlayer.play();
+        elements.playBtn.innerHTML = '<i class="fas fa-pause mr-2"></i>Pause';
+        utils.showAudioStatus('Playing', 'success');
+      } else {
+        elements.audioPlayer.pause();
+        elements.playBtn.innerHTML = '<i class="fas fa-play mr-2"></i>Play';
+        utils.showAudioStatus('Paused', 'warning');
+      }
+    });
+
+    // Audio player events
+    elements.audioPlayer.addEventListener('play', () => {
+      elements.playBtn.innerHTML = '<i class="fas fa-pause mr-2"></i>Pause';
+      utils.showAudioStatus('Playing', 'success');
+    });
+    
+    elements.audioPlayer.addEventListener('pause', () => {
+      elements.playBtn.innerHTML = '<i class="fas fa-play mr-2"></i>Play';
+      utils.showAudioStatus('Paused', 'warning');
+    });
+    
+    elements.audioPlayer.addEventListener('ended', () => {
+      elements.playBtn.innerHTML = '<i class="fas fa-play mr-2"></i>Play';
+      utils.showAudioStatus('Playback finished', 'info');
+    });
+    
+    elements.audioPlayer.addEventListener('timeupdate', () => {
+      if (state.wavesurfer) {
+        const progress = elements.audioPlayer.currentTime / elements.audioPlayer.duration;
+        state.wavesurfer.seekTo(progress || 0);
+      }
+    });
+    
+    elements.audioPlayer.addEventListener('loadedmetadata', () => {
+      const duration = utils.formatTime(elements.audioPlayer.duration);
+      state.currentAudioInfo.duration = duration;
+      utils.updateAudioInfo();
+    });
+    
+    // Status toast close button
+    elements.statusCloseBtn.addEventListener('click', () => utils.hideStatus());
+    
+    // Click outside to close status toast
+    document.addEventListener('click', (e) => {
+      if (!elements.statusToast.contains(e.target) && elements.statusToast.classList.contains('show')) {
+        utils.hideStatus();
+      }
+    });
+  }
+
+  // Audio Generation Functions
+  async function generateAudio() {
+    const text = elements.textInput.value.trim();
+    if (!text) {
+      utils.showStatus('Please enter text content!', 'warning');
+      return;
+    }
+
+    if (text.length > CONFIG.MAX_CHARS) {
+      utils.showStatus(`Text cannot exceed ${CONFIG.MAX_CHARS} characters!`, 'error');
+      return;
+    }
+
+    const lang = elements.langSelect.value;
+    const voice = elements.voiceSelect.value;
+    const format = elements.formatSelect.value;
+    const formatText = elements.formatSelect.options[elements.formatSelect.selectedIndex].text;
+    const langText = elements.langSelect.options[elements.langSelect.selectedIndex].text;
+    
+    // Update audio info
+    state.currentAudioInfo.format = formatText.split(' ')[0];
+    state.currentAudioInfo.voice = state.voiceManager.getDisplayName(voice);
+    state.currentAudioInfo.language = langText.replace(/[🇺🇸🇬🇧🇯🇵🇨🇳🇪🇸🇫🇷🇮🇳🇮🇹🇧🇷]/g, '').trim();
+    utils.updateAudioInfo();
+
+    const payload = {
+      model: "kokoro",
+      lang_code: lang,
+      input: text,
+      voice: voice,
+      response_format: format,
+      download_format: format,
+      speed: parseFloat(elements.speedSlider.value),
+      stream: false,
+      return_download_link: false
+    };
+
+    utils.showLoading(true);
+    utils.showStatus('Generating audio...', 'info');
+
+    try {
+      const response = await fetch(CONFIG.API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      await handleAudioResponse(response);
+      utils.showStatus('Audio generated successfully!', 'success');
+    } catch (error) {
+      console.error('Audio generation failed:', error);
+      utils.showStatus(`Generation failed: ${error.message}`, 'error');
+    } finally {
+      utils.showLoading(false);
+    }
+  }
+
+  async function handleAudioResponse(response) {
+    const blob = await response.blob();
+    const audioURL = URL.createObjectURL(blob);
+
+    // Show audio section
+    elements.noAudioSection.classList.add('hidden');
+    elements.audioSection.classList.remove('hidden');
+    elements.waveform.classList.remove('hidden');
+    utils.showAudioStatus('Ready to play', 'info');
+
+    // Set up audio player
+    elements.audioPlayer.src = audioURL;
+    elements.audioPlayer.volume = 1.0;
+    elements.playBtn.innerHTML = '<i class="fas fa-play mr-2"></i>Play';
+
+    // Set up download link
+    elements.downloadLink.href = audioURL;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    elements.downloadLink.download = `tts_${timestamp}.${elements.formatSelect.value}`;
+
+    // Initialize waveform
+    if (state.wavesurfer) {
+      state.wavesurfer.destroy();
+    }
+    
+    state.wavesurfer = WaveSurfer.create({
+      container: '#waveform',
+      waveColor: '#4f46e5',
+      progressColor: '#7c3aed',
+      cursorColor: '#7c3aed',
+      height: 120,
+      barWidth: 3,
+      barGap: 2,
+      barRadius: 3,
+      responsive: true
+    });
+    
+    state.wavesurfer.load(audioURL);
+    
+    // Click waveform to control playback
+    state.wavesurfer.on('ready', () => {
+      state.wavesurfer.on('click', () => {
+        if (elements.audioPlayer.paused) {
+          elements.audioPlayer.play();
+        } else {
+          elements.audioPlayer.pause();
+        }
+      });
+    });
+  }
+
+  // Initialize application
+  async function initApp() {
+    initEventListeners();
+    
+    try {
+      await dataLoader.initializeAll();
+      uiUpdater.updateVoiceList();
+    } catch (error) {
+      console.error('Failed to initialize:', error);
+      utils.showStatus('Initialization failed, some features may not work', 'error');
+    }
+    
+    // Update audio info display
+    utils.updateAudioInfo();
+    
+    // Initialize character count
+    const initialLength = elements.textInput.value.length;
+    elements.charCount.textContent = initialLength;
+    
+    utils.showStatus('Tool ready. Enter text or use random example to start.', 'success');
+  }
+
+  // Initialize on page load
+  document.addEventListener('DOMContentLoaded', initApp);
+
+  // Clean up resources
+  window.addEventListener('beforeunload', () => {
+    if (state.wavesurfer) {
+      state.wavesurfer.destroy();
+    }
+    if (state.statusTimeout) {
+      clearTimeout(state.statusTimeout);
+    }
+  });
+</script>
+</body>
+</html>
