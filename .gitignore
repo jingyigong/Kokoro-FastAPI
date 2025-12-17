@@ -73,3 +73,4 @@ uv.lock
 
 # Mac MPS virtualenv for dual testing
 .venv-mps
+.DS_Store
